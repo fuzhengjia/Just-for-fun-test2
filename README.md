@@ -1,5 +1,7 @@
 # Riemann Zeta Function Zeros Calculator
 
+[English](./README.md) | [中文](./README.zh-CN.md)
+
 A Java implementation for computing and verifying the non-trivial zeros of the Riemann Zeta function on the critical line.
 
 ## Project Overview
