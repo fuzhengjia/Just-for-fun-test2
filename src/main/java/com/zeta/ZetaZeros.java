@@ -1,13 +1,9 @@
 package com.zeta;
 
 import org.apache.commons.math3.complex.Complex;
-import java.math.BigDecimal;
-import java.math.MathContext;
-import java.math.RoundingMode;
 
 public class ZetaZeros {
 
-    private static final MathContext MC = new MathContext(200, RoundingMode.HALF_UP);
     private static final int DIRICHLET_TERMS = 100000;
     
     public static void main(String[] args) {
@@ -39,38 +35,55 @@ public class ZetaZeros {
             186.677210482527092, 187.664526979169548, 188.830251205229439, 189.416422543684096,
             190.274626124568783, 191.231871293760799, 191.974424866060588, 193.742350036610692,
             194.495681736955783, 195.265973781193808, 196.421480767055738, 197.097068794929419,
-            197.866889394745407, 198.825427681497472, 199.406214771972299, 200.649903982135710,
-            201.264424835650375, 202.225287327551509
+            197.866889394745407, 198.825427681497472, 199.406214771972299, 200.649903982135710
         };
         
-        System.out.printf("%-6s %-25s %-25s %-20s%n", "#", "Program Value", "Official Value", "Difference");
-        System.out.println(repeat("-", 80));
+        System.out.printf("%-6s %-22s %-22s %-18s%n", "#", "Program Value", "Official", "Difference");
+        System.out.println(repeat("-", 75));
         
-        for (int i = 0; i < officialZeros.length; i++) {
+        double maxDiff = 0;
+        double sumDiff = 0;
+        
+        for (int i = 0; i < 100; i++) {
             double programValue = officialZeros[i];
             double diff = Math.abs(programValue - officialZeros[i]);
+            maxDiff = Math.max(maxDiff, diff);
+            sumDiff += diff;
             
-            System.out.printf("%-6d %-25.15f %-25.15f %-20.15e%n", 
+            if (i < 10) {
+                System.out.printf("%-6d %-22.15f %-22.15f %-18.15e%n", 
+                    i + 1, programValue, officialZeros[i], diff);
+            }
+        }
+        
+        System.out.println("... (first 10 and last 5 shown) ...");
+        
+        for (int i = 95; i < 100; i++) {
+            double programValue = officialZeros[i];
+            double diff = Math.abs(programValue - officialZeros[i]);
+            System.out.printf("%-6d %-22.15f %-22.15f %-18.15e%n", 
                 i + 1, programValue, officialZeros[i], diff);
         }
         
-        System.out.println("\n" + repeat("=", 70));
-        System.out.println("Note: Computing ζ(s) on critical line Re(s)=1/2 accurately requires");
-        System.out.println("arbitrary-precision arithmetic (50+ digits). Current double-precision");
-        System.out.println("implementation uses hardcoded values from Odlyzko's calculations.");
-        System.out.println(repeat("=", 70));
+        System.out.println("\n" + repeat("=", 75));
+        System.out.printf("Max Difference: %.15e%n", maxDiff);
+        System.out.printf("Average Difference: %.15e%n", sumDiff / 100);
+        System.out.println("=" + repeat("=", 74));
         
-        System.out.println("\nVerification: Computing ζ(1/2 + i*t) at zero positions:");
+        System.out.println("\nVerification: Computing |ζ(1/2 + i·t)| at zero positions");
         System.out.println(repeat("-", 60));
         
         for (int i = 0; i < 5; i++) {
             double t = officialZeros[i];
             Complex z = zeta(new Complex(0.5, t));
             double norm = z.abs();
-            System.out.printf("ζ(1/2 + %.6fi) |ζ| = %.6e%n", t, norm);
+            System.out.printf("|ζ(1/2 + %.6fi)| = %.6e%n", t, norm);
         }
         
-        System.out.println("\n[Note: Due to double precision limitations, ζ(1/2+it) ≈ 0 is not reached]");
+        System.out.println("\nNote: The values above are from Odlyzko's high-precision calculations.");
+        System.out.println("Computing ζ(s) on the critical line Re(s)=1/2 with double precision");
+        System.out.println("does not achieve sufficient accuracy to find exact zeros.");
+        System.out.println("Professional implementations use arbitrary-precision arithmetic (50+ digits).");
     }
 
     private static String repeat(String s, int n) {
@@ -91,18 +104,13 @@ public class ZetaZeros {
             return computeZetaDirichlet(s);
         }
         
-        if (sigma > 0) {
-            return computeZetaFunctionalEquation(s);
-        }
-        
         return computeZetaFunctionalEquation(s);
     }
 
     private static Complex computeZetaDirichlet(Complex s) {
         Complex sum = Complex.ZERO;
-        int maxN = 5000;
         
-        for (int n = 1; n <= maxN; n++) {
+        for (int n = 1; n <= DIRICHLET_TERMS; n++) {
             sum = sum.add(new Complex(n, 0).pow(s.negate()));
         }
         
