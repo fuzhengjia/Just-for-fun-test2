@@ -27,6 +27,97 @@ This allows computation of ζ(s) in the critical strip by relating it to values 
 ### 3. Gamma Function Approximation
 The Gamma function Γ(z) is approximated using Stirling's formula and recurrence relations for accurate computation in the functional equation.
 
+## Theoretical Foundations
+
+### The Riemann Zeta Function
+
+The Riemann Zeta function is defined for complex variable s = σ + it as:
+
+```
+ζ(s) = Σ(1/n^s) = 1/1^s + 1/2^s + 1/3^s + ...   (Dirichlet series)
+```
+
+This series converges when Re(s) > 1.
+
+### Euler Product (Prime Connection)
+
+For Re(s) > 1, the zeta function has an equivalent product form:
+```
+ζ(s) = Π(1 - p^(-s))^(-1)   over all primes p
+```
+This establishes the deep connection between ζ(s) and the distribution of prime numbers.
+
+### The Critical Strip and Critical Line
+
+- **Critical Strip**: 0 < Re(s) < 1
+- **Critical Line**: Re(s) = 1/2 (the center of the critical strip)
+
+### The Riemann Hypothesis
+
+**All non-trivial zeros of ζ(s) lie on the critical line Re(s) = 1/2.**
+
+This unproven conjecture, posed by Bernhard Riemann in 1859, is one of the Millennium Prize Problems with a $1,000,000 reward for proof or disproof.
+
+### Trivial vs Non-Trivial Zeros
+
+- **Trivial Zeros**: ζ(-2n) = 0 for n = 1, 2, 3, ... (negative even integers)
+- **Non-Trivial Zeros**: All other zeros, conjectured to all have real part 1/2
+
+## Algorithm Implementation Principles
+
+### 1. Zeta Evaluation Strategy
+
+The implementation uses different methods based on the region of s:
+
+```
+if σ > 1:         Direct Dirichlet summation
+else if σ > 0:    Functional equation method
+else:             Functional equation method (same as above)
+```
+
+### 2. Dirichlet Series (σ > 1)
+
+For Re(s) > 1, the series converges absolutely:
+```java
+ζ(s) = Σ(n=1 to N) 1/n^s
+```
+
+**Implementation**: Truncated to N = 5000 terms. Larger N improves accuracy but increases computation time.
+
+### 3. Functional Equation (0 < σ ≤ 1)
+
+The symmetric form:
+```
+π^(-s/2) Γ(s/2) ζ(s) = π^(-(1-s)/2) Γ((1-s)/2) ζ(1-s)
+```
+
+Rearranged to compute ζ(s) when σ ≤ 1:
+```
+ζ(s) = π^(s-1/2) × Γ((1-s)/2) × ζ(1-s) / Γ(s/2)
+```
+
+**Key insight**: ζ(1-s) has Re(1-s) > 1, so we can compute it directly via Dirichlet series!
+
+### 4. Gamma Function Approximation
+
+The Stirling approximation for large |z|:
+```
+Γ(z) ≈ √(2π) × z^(z-1/2) × e^(-z) × (1 + 1/(12z) + ...)
+```
+
+**Implementation**:
+- For x < 0.5: Use reflection formula Γ(x)Γ(1-x) = π/sin(πx)
+- For x ≥ 0.5: Use Stirling with recurrence to reduce argument
+
+### 5. Zero Finding (Not Implemented)
+
+Finding zeros requires:
+1. **Gram Points**: Solutions to ζ(1/2 + i·g_n) is real (alternating sign between Gram points)
+2. **Newton-Raphson or Bisection**: Root-finding on |ζ(1/2 + it)|²
+3. **Extensive computation**: Billions of zeros computed using methods like the Odlyzko-Schönhage algorithm
+
+This implementation stores known zeros rather than computing them, as accurate computation requires arbitrary-precision arithmetic (typically 50+ decimal digits).
+
 ## Project Structure
 
 ```
