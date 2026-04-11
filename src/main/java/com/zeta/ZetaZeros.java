@@ -151,16 +151,13 @@ public class ZetaZeros {
      * π^(-s/2) Γ(s/2) ζ(s) = π^(-(1-s)/2) Γ((1-s)/2) ζ(1-s)
      * 
      * Rearranged to compute ζ(s):
-     * ζ(s) = π^(s-1/2) * Γ((1-s)/2) / Γ(s/2) * ζ(1-s)
+     * ζ(s) = 2^s * π^(s-1/2) * Γ((1-s)/2) / Γ(s/2) * ζ(1-s)
      * 
-     * Key Insight:
-     * When Re(s) ≤ 1, we compute ζ(1-s) instead.
-     * However, this only works when Re(1-s) > 1 (i.e., Re(s) < 0).
-     * For 0 < Re(s) < 1, we must use the complete formula above.
+     * For critical line s = 1/2 + it:
+     * ζ(1/2 + it) = 2^(1/2+it) * π^(it) * Γ(1/4 - it/2) / Γ(1/4 + it/2) * ζ(1/2 - it)
      * 
-     * Note: For critical line Re(s)=0.5, this is an approximation because
-     * Dirichlet series for ζ(1-s) doesn't converge there. A more accurate
-     * implementation would require arbitrary precision arithmetic.
+     * Note: ζ(1/2 - it) is computed via Dirichlet series which converges poorly
+     * at Re(s)=0.5, hence the large errors in verification.
      * 
      * @param s Complex input with Re(s) ≤ 1
      * @return Approximation of ζ(s)
@@ -169,68 +166,134 @@ public class ZetaZeros {
         // Transform s → 1-s
         Complex s1 = Complex.ONE.subtract(s);
         
-        // For Re(s) < 0: Re(1-s) > 1, Dirichlet works directly
-        // For 0 < Re(s) ≤ 1: Re(1-s) < 1, but we use formula anyway (approximation)
+        // Compute ζ(1-s) using Dirichlet series
+        // For Re(s) < 0, this converges; for 0 < Re(s) ≤ 1, it's an approximation
         Complex zeta_s1 = computeZetaDirichlet(s1);
         
-        // π^(s-1/2) = π^(σ-1/2) * (cos(t*ln(π)) + i*sin(t*ln(π)))
-        // But simpler: π^(s-1/2) = π^(σ-1/2) * e^(i*t*ln(π))
-        // Split into magnitude and phase
-        double pi_pow = Math.pow(Math.PI, s.getReal() - 0.5);
+        // π^(s-1/2) factor: magnitude = π^(σ-1/2), phase = t*ln(π)
+        double pi_mag = Math.pow(Math.PI, s.getReal() - 0.5);
         double pi_phase = s.getImaginary() * Math.log(Math.PI);
-        
         double cos_pi = Math.cos(pi_phase);
         double sin_pi = Math.sin(pi_phase);
         
-        // Compute Γ((1-s)/2) - the Gamma in numerator
-        // (1-s)/2 = (1-σ)/2 - i*t/2
-        double gamma_arg_re = (1 - s.getReal()) / 2;
-        double gamma_arg_im = -s.getImaginary() / 2;
-        double gamma_numer = gammaComplex(gamma_arg_re, gamma_arg_im);
+        // 2^s factor: magnitude = 2^σ, phase = t*ln(2)
+        double two_mag = Math.pow(2, s.getReal());
+        double two_phase = s.getImaginary() * Math.log(2);
+        double cos_two = Math.cos(two_phase);
+        double sin_two = Math.sin(two_phase);
         
-        // Compute Γ(s/2) - the Gamma in denominator  
-        // s/2 = σ/2 + i*t/2
-        double gamma_denom_re = s.getReal() / 2;
-        double gamma_denom_im = s.getImaginary() / 2;
-        double gamma_denom = gammaComplex(gamma_denom_re, gamma_denom_im);
+        // Combine π^(s-1/2) * 2^s into single complex factor
+        double combined_mag = pi_mag * two_mag;
+        double combined_phase = pi_phase + two_phase;
+        double cos_combined = Math.cos(combined_phase);
+        double sin_combined = Math.sin(combined_phase);
         
-        // Combined factor: π^(s-1/2) * Γ((1-s)/2) / Γ(s/2)
-        double gamma_ratio = gamma_numer / gamma_denom;
+        // Compute Γ((1-s)/2) for numerator
+        double gamma_num_re = (1 - s.getReal()) / 2;
+        double gamma_num_im = -s.getImaginary() / 2;
+        Complex gamma_numer = gammaComplexFull(gamma_num_re, gamma_num_im);
         
-        // Final factor: magnitude * gamma_ratio * (cos + i*sin)
-        double factor_real = pi_pow * gamma_ratio * cos_pi;
-        double factor_imag = pi_pow * gamma_ratio * sin_pi;
+        // Compute Γ(s/2) for denominator
+        double gamma_den_re = s.getReal() / 2;
+        double gamma_den_im = s.getImaginary() / 2;
+        Complex gamma_denom = gammaComplexFull(gamma_den_re, gamma_den_im);
         
+        // Complex division: gamma_numer / gamma_denom
+        // (a+bi)/(c+di) = ((ac+bd) + i(bc-ad))/(c²+d²)
+        double gnr = gamma_numer.getReal();
+        double gni = gamma_numer.getImaginary();
+        double gdr = gamma_denom.getReal();
+        double gdi = gamma_denom.getImaginary();
+        double denom_mag = gdr * gdr + gdi * gdi;
+        Complex gamma_ratio = new Complex(
+            (gnr * gdr + gni * gdi) / denom_mag,
+            (gni * gdr - gnr * gdi) / denom_mag
+        );
+        
+        // Multiply: combined_factor * gamma_ratio
+        double factor_real = combined_mag * (gamma_ratio.getReal() * cos_combined - gamma_ratio.getImaginary() * sin_combined);
+        double factor_imag = combined_mag * (gamma_ratio.getReal() * sin_combined + gamma_ratio.getImaginary() * cos_combined);
+        
+        // Final: factor * ζ(1-s)
         Complex result = zeta_s1.multiply(new Complex(factor_real, factor_imag));
         
         return result;
     }
 
     /**
-     * Gamma function for complex argument using simplified Lanczos approximation
+     * Complete Gamma function for complex arguments
+     * Returns complex value using Stirling with reflection for negative real parts
      * 
      * @param x Real part
-     * @param y Imaginary part  
-     * @return Approximation of Γ(x + iy)
+     * @param y Imaginary part
+     * @return Γ(x + iy) as complex number
      */
-    private static double gammaComplex(double x, double y) {
-        // Use real gamma approximation for all cases (Lanczos is complex)
-        // For critical line computations, we approximate Γ(s/2) magnitude
+    private static Complex gammaComplexFull(double x, double y) {
+        // For real arguments, use real gamma
         if (Math.abs(y) < 1e-10) {
-            return gammaRealPos(x);
+            return new Complex(gammaRealPos(x), 0);
         }
         
-        // For complex case, use magnitude approximation from Stirling
-        // |Γ(x+iy)| ≈ √(2π) * |x+iy|^(x-0.5) * e^(-x)
-        double magnitude = Math.sqrt(x * x + y * y);
-        double arg = Math.atan2(y, x);
+        // For small x (< 0.5), use reflection formula
+        // Γ(z)Γ(1-z) = π/sin(πz)
+        if (x < 0.5) {
+            // Compute Γ(1-z) first
+            Complex gamma_1minusz = gammaComplexFull(1 - x, -y);
+            
+            // sin(πz) = sin(πx)cosh(πy) - i*cos(πx)sinh(πy)
+            double sin_pi_x = Math.sin(Math.PI * x);
+            double cos_pi_x = Math.cos(Math.PI * x);
+            double sinh_pi_y = Math.sinh(Math.PI * y);
+            double cosh_pi_y = Math.cosh(Math.PI * y);
+            Complex sin_pi_z = new Complex(
+                sin_pi_x * cosh_pi_y,
+                -cos_pi_x * sinh_pi_y
+            );
+            
+            // 1/sin(πz) = conjugate(sin) / |sin|²
+            double sin_mag2 = sin_pi_z.getReal() * sin_pi_z.getReal() + sin_pi_z.getImaginary() * sin_pi_z.getImaginary();
+            Complex sin_inv = new Complex(
+                sin_pi_z.getReal() / sin_mag2,
+                -sin_pi_z.getImaginary() / sin_mag2
+            );
+            
+            // π/sin(πz) * 1/Γ(1-z) = π * sin_inv / gamma_1minusz
+            Complex pi_over_sin = sin_inv.multiply(Math.PI);
+            // Division: pi_over_sin / gamma_1minusz
+            double pr = pi_over_sin.getReal();
+            double pi = pi_over_sin.getImaginary();
+            double g1r = gamma_1minusz.getReal();
+            double g1i = gamma_1minusz.getImaginary();
+            double g1mag2 = g1r * g1r + g1i * g1i;
+            
+            return new Complex(
+                (pr * g1r + pi * g1i) / g1mag2,
+                (pi * g1r - pr * g1i) / g1mag2
+            );
+        }
         
-        double log_term = (x - 0.5) * Math.log(magnitude) - x;
-        double pow_term = Math.exp(log_term);
+        // Use Stirling approximation for x >= 0.5
+        // Γ(z) ≈ √(2π) * z^(z-0.5) * e^(-z)
+        double z_mag = Math.sqrt(x * x + y * y);
+        double z_arg = Math.atan2(y, x);
         
-        double result = Math.sqrt(2 * Math.PI) * pow_term;
+        // z^(z-0.5) = exp((z-0.5) * log(z))
+        // log(z) = ln|z| + i*arg(z)
+        double ln_mag = Math.log(z_mag);
+        double exp_real = (x - 0.5) * ln_mag - y * z_arg;
+        double exp_imag = (x - 0.5) * z_arg + y * ln_mag;
         
-        return result;
+        double pow_mag = Math.exp(exp_real);
+        double pow_arg = exp_imag;
+        
+        // Multiply by √(2π) * e^(-x) * e^(-iy)
+        double result_mag = Math.sqrt(2 * Math.PI) * pow_mag * Math.exp(-x);
+        double result_arg = pow_arg - y;
+        
+        return new Complex(
+            result_mag * Math.cos(result_arg),
+            result_mag * Math.sin(result_arg)
+        );
     }
 
     /**
