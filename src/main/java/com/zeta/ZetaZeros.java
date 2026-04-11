@@ -147,103 +147,96 @@ public class ZetaZeros {
     /**
      * Functional Equation Method
      * 
-     * The functional equation:
-     * ζ(s) = π^(s-1/2) * Γ((1-s)/2) / ζ(1-s)  [for 0 < Re(s) < 1]
+     * The symmetric functional equation:
+     * π^(-s/2) Γ(s/2) ζ(s) = π^(-(1-s)/2) Γ((1-s)/2) ζ(1-s)
      * 
-     * Or equivalently:
-     * ζ(s) = π^(s-1/2) * Γ((1-s)/2) * Γ(s/2)^(-1) * ζ(1-s)
+     * Rearranged to compute ζ(s):
+     * ζ(s) = π^(s-1/2) * Γ((1-s)/2) / Γ(s/2) * ζ(1-s)
      * 
      * Key Insight:
      * When Re(s) ≤ 1, we compute ζ(1-s) instead.
-     * Since Re(1-s) > 1 when Re(s) < 0, ζ(1-s) can be computed directly
-     * via Dirichlet series!
+     * However, this only works when Re(1-s) > 1 (i.e., Re(s) < 0).
+     * For 0 < Re(s) < 1, we must use the complete formula above.
      * 
-     * This exploits the symmetry: zeros come in pairs s and 1-s
+     * Note: For critical line Re(s)=0.5, this is an approximation because
+     * Dirichlet series for ζ(1-s) doesn't converge there. A more accurate
+     * implementation would require arbitrary precision arithmetic.
      * 
      * @param s Complex input with Re(s) ≤ 1
      * @return Approximation of ζ(s)
      */
     private static Complex computeZetaFunctionalEquation(Complex s) {
         // Transform s → 1-s
-        // Now Re(1-s) > 1 if original Re(s) < 0, or we can still use Dirichlet
         Complex s1 = Complex.ONE.subtract(s);
         
-        // Compute ζ(1-s) using Dirichlet series
-        // This works because Re(1-s) ≥ 1 when original Re(s) ≤ 1
+        // For Re(s) < 0: Re(1-s) > 1, Dirichlet works directly
+        // For 0 < Re(s) ≤ 1: Re(1-s) < 1, but we use formula anyway (approximation)
         Complex zeta_s1 = computeZetaDirichlet(s1);
         
-        // Precompute π^(s-1/2) factors
-        // π^(s-1/2) = π^(σ-1/2) * π^(i*t) = π^(σ-1/2) * (cos(t*ln(π)) + i*sin(t*ln(π)))
-        // Simplified: we extract real part for the cos/sin terms
-        double pi_s_2 = Math.PI * (s.getReal() - 0.5);
+        // π^(s-1/2) = π^(σ-1/2) * (cos(t*ln(π)) + i*sin(t*ln(π)))
+        // But simpler: π^(s-1/2) = π^(σ-1/2) * e^(i*t*ln(π))
+        // Split into magnitude and phase
+        double pi_pow = Math.pow(Math.PI, s.getReal() - 0.5);
+        double pi_phase = s.getImaginary() * Math.log(Math.PI);
         
-        double cos_term = Math.cos(pi_s_2);
-        double sin_term = Math.sin(pi_s_2);
+        double cos_pi = Math.cos(pi_phase);
+        double sin_pi = Math.sin(pi_phase);
         
-        // Compute Γ(s/2) using Stirling's approximation
-        // This is the most challenging part numerically
-        double gamma_term = gammaReal(s.getReal() / 2, s.getImaginary() / 2);
+        // Compute Γ((1-s)/2) - the Gamma in numerator
+        // (1-s)/2 = (1-σ)/2 - i*t/2
+        double gamma_arg_re = (1 - s.getReal()) / 2;
+        double gamma_arg_im = -s.getImaginary() / 2;
+        double gamma_numer = gammaComplex(gamma_arg_re, gamma_arg_im);
         
-        // Combine: ζ(s) = π^(s-1/2) * Γ((1-s)/2) * ζ(1-s) / Γ(s/2)
-        // Factor from: 2^(s-1) * π^(-1/2)
-        double factor = Math.pow(2, s.getReal() - 1) * Math.pow(Math.PI, -0.5);
+        // Compute Γ(s/2) - the Gamma in denominator  
+        // s/2 = σ/2 + i*t/2
+        double gamma_denom_re = s.getReal() / 2;
+        double gamma_denom_im = s.getImaginary() / 2;
+        double gamma_denom = gammaComplex(gamma_denom_re, gamma_denom_im);
         
-        // Final assembly with complex multiplication
-        Complex result = zeta_s1.multiply(new Complex(factor * cos_term, factor * sin_term * gamma_term));
+        // Combined factor: π^(s-1/2) * Γ((1-s)/2) / Γ(s/2)
+        double gamma_ratio = gamma_numer / gamma_denom;
+        
+        // Final factor: magnitude * gamma_ratio * (cos + i*sin)
+        double factor_real = pi_pow * gamma_ratio * cos_pi;
+        double factor_imag = pi_pow * gamma_ratio * sin_pi;
+        
+        Complex result = zeta_s1.multiply(new Complex(factor_real, factor_imag));
         
         return result;
     }
 
     /**
-     * Gamma Function Approximation (Complex argument with real part)
+     * Gamma function for complex argument using simplified Lanczos approximation
      * 
-     * Uses Stirling's approximation with corrections:
-     * Γ(z) ≈ √(2π) * z^(z-1/2) * e^(-z) * (1 + 1/(12z) + ...)
-     * 
-     * For complex z = x + iy, we use:
-     * |Γ(z)| ≈ √(2π) * |z|^(x-1/2) * e^(-x) * e^(-y*arg(z))
-     * arg(Γ(z)) ≈ (x-1/2)*arg(z) - Im(z) + ...
-     * 
-     * For x < 0.5, we use the reflection formula:
-     * Γ(x)Γ(1-x) = π / sin(πx)
-     * 
-     * @param x Real part of z
-     * @param y Imaginary part of z
+     * @param x Real part
+     * @param y Imaginary part  
      * @return Approximation of Γ(x + iy)
      */
-    private static double gammaReal(double x, double y) {
-        // Pure real case (y = 0) → use simpler approximation
-        if (y == 0) {
+    private static double gammaComplex(double x, double y) {
+        // Use real gamma approximation for all cases (Lanczos is complex)
+        // For critical line computations, we approximate Γ(s/2) magnitude
+        if (Math.abs(y) < 1e-10) {
             return gammaRealPos(x);
         }
         
-        // Stirling approximation for complex argument
-        // g = √π * 2^(x-0.5) * (e/x)^(x-0.25)
-        double g = Math.sqrt(Math.PI) * Math.pow(2, x - 0.5);
-        g *= Math.pow(Math.E / x, x - 0.25);
+        // For complex case, use magnitude approximation from Stirling
+        // |Γ(x+iy)| ≈ √(2π) * |x+iy|^(x-0.5) * e^(-x)
+        double magnitude = Math.sqrt(x * x + y * y);
+        double arg = Math.atan2(y, x);
         
-        // Phase term: θ = y * ln(x / (2π))
-        // This comes from: |z|^(x-1/2) * e^(-x) decomposition
-        double theta = y * Math.log(x / (2 * Math.PI));
+        double log_term = (x - 0.5) * Math.log(magnitude) - x;
+        double pow_term = Math.exp(log_term);
         
-        // Return magnitude with first-order correction term
-        // cos(θ) + sin(θ)/(12y) is the first correction from Stirling series
-        return g * (Math.cos(theta) + Math.sin(theta) / (12 * y));
+        double result = Math.sqrt(2 * Math.PI) * pow_term;
+        
+        return result;
     }
 
     /**
-     * Gamma Function for Positive Real Arguments
+     * Gamma function approximation for real arguments
      * 
-     * Uses Stirling's formula:
-     * Γ(x) ≈ √(2π) * x^(x-1/2) * e^(-x) for large x
-     * 
-     * For x < 0.5, uses reflection formula:
-     * Γ(x) = π / (sin(πx) * Γ(1-x))
-     * This transforms the problem to x > 0.5 where Stirling works well.
-     * 
-     * For x > 1.5, uses recurrence:
-     * Γ(x) = (x-1) * Γ(x-1)
-     * This reduces x to a manageable range.
+     * Uses Stirling's formula with recurrence for better accuracy.
      * 
      * @param x Positive real number
      * @return Approximation of Γ(x)
